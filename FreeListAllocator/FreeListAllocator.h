@@ -1,5 +1,5 @@
-#ifndef _FREELIST_ALLOCATOR_H_
-#define _FREELIST_ALLOCATOR_H_
+#ifndef _BB_FREELIST_ALLOCATOR_H_ // [ _BB_FREELIST_ALLOCATOR_H_
+#define _BB_FREELIST_ALLOCATOR_H_
 
 #include "engine/memory/Allocator.h"
 
@@ -40,4 +40,4 @@ namespace bbengine
 
 
 
-#endif
+#endif // ] _BB_FREELIST_ALLOCATOR_H_
