@@ -18,11 +18,13 @@ namespace bbengine
             - allocates memory buffer based on heapSize
             - initializes internal free list
 
+            TODO:
+            - Allocate internal memory block from a parent custom allocator
+              instead of using malloc and free
+
         ====================================================================*/
         FreeListAllocator::FreeListAllocator( u32 heapSize )
         {
-            // TODO: Allocate buffer from custom allocator, like a
-            // PageAllocator, HeapAllocator, etc. instead of using malloc
             m_heap = malloc( heapSize );
 
             m_firstFree = ( block_s* )MemUtils_Align( ( u32 )m_heap, ALIGN_8 );
@@ -64,6 +66,9 @@ namespace bbengine
             - Allocate aligned memory of numBytes size.
             - @return: returns pointer to memory aligned block
 
+            TODO:
+            - Add calls to "Out of Memory" routines
+
         ====================================================================*/
         void* FreeListAllocator::AllocateAligned( u32 numBytes, const align_t alignment )
         {
@@ -81,10 +86,12 @@ namespace bbengine
             // least 8 bytes + the aligned size of the block header
             sizeNeeded = MemUtils_Align( sizeNeeded, alignment ) + ALIGNED_HEADER_SIZE;
 
-            // find the FIRST block that can fit the requested allocation
             block_s* prevBlock = NULL;
             block_s* block = m_firstFree;
 
+            // iterate through all the free list blocks until one with enough
+            // space is found. this block will be used for the allocation. Uses
+            // a First Fit Policy
             while( block )
             {
                 if( sizeNeeded <= block->size )
@@ -98,7 +105,7 @@ namespace bbengine
 
             if( block == NULL )
             {
-                // TODO: Add calls to "Out of Memory" routines
+                // No blocks large enough to fit memory request
                 return NULL;
             }
 
@@ -109,26 +116,33 @@ namespace bbengine
             {
                 // split the free block
                 block_s* newBlock = ( block_s* )( ( byte* )block + sizeNeeded );
+                // link the new free block into the free list
                 newBlock->next = block->next;
                 newBlock->size = block->size - sizeNeeded;
 
+                // begin removing block from the free list. this is half of it,
+                // need prevBlock for the other half of the removal process
                 block->next = newBlock;
+                // update the size of the block, taking into account the number
+                // of bytes needed for the header of the block
                 block->size = sizeNeeded - ALIGNED_HEADER_SIZE;
             }
-            else
-            {
-                block->size = sizeNeeded;
-            }
-
 
             if( prevBlock )
             {
+                // complete inserting any new blocks into the free list and
+                // remove the current block from the free list
                 prevBlock->next = block->next;
             }
             else
             {
+                // if a previous block wasnt found bound on memory address, then
+                // the first free block was grabbed from the list and the head
+                // of the list now needs to be updated
                 m_firstFree = m_firstFree->next;
             }
+
+            block->next = NULL;
 
             // flag the block as being used
             block->size |= FREE_BIT_MASK;
@@ -147,22 +161,31 @@ namespace bbengine
             - coalesces/joins adjacent free blocks of memory
             - sorts free blocks of memory based on address
 
+            TODO:
+            - Can attempt to validate ptr. At the moment, nothing is preventing
+              the user from trying to free an invalid ptr (ie Check that it is
+              aligned, add additional meta-data for tracking, byte patterns)
+            - Fail an assertion if trying to free a NULL pointer
+            - Fail an assertion if trying to free a block of memory that has
+              already been freed
+
         ====================================================================*/
         void FreeListAllocator::Free( void* ptr )
         {
             if ( ptr == NULL )
             {
+                // trying to free a NULL ptr
                 return;
             }
 
+            // get the block header for the ptr
             block_s* block = ( block_s* )( ( byte* )ptr - ALIGNED_HEADER_SIZE );
 
             if ( IS_BLOCK_FREE(block) )
             {
+                // block has already been freed
                 return;
             }
-
-            block->next = NULL;
 
             // flag the block as being free
             block->size = block->size & ~FREE_BIT_MASK;
@@ -222,7 +245,7 @@ namespace bbengine
         /*====================================================================
 
             FreeListAllocator::GetBlockSize( void* ptr )
-            - returns size of specified block of memory
+            - @return: size of specified block of memory
 
         ====================================================================*/
         u32 FreeListAllocator::GetBlockSize( void* ptr )
